@@ -100,13 +100,36 @@ class AudioBookShelfLibraryService:
 		response.raise_for_status()
 		return response.json()
 
-	def get_file_url(self, iid):
-		"""Get the streaming URL for an audiobook file"""
+	def get_file_url(self, iid, episode_id=None):
+		"""Get the streaming URL for an audiobook file or podcast episode"""
 		try:
 			# First try to get the item details to find direct file access
-			item = self.get_library_item_by_id(iid)
+			item = self.get_library_item_by_id(iid, expanded=1 if episode_id else None, episode=episode_id)
 			
-			# Check if we can get direct file access
+			# For podcast episodes
+			if episode_id:
+				xbmc.log(f"Getting file URL for episode {episode_id}", xbmc.LOGINFO)
+				
+				# Look for the episode in the media
+				episodes = item.get('media', {}).get('episodes', [])
+				episode_data = None
+				
+				for ep in episodes:
+					if ep.get('id') == episode_id:
+						episode_data = ep
+						break
+				
+				if episode_data and 'audioFile' in episode_data:
+					audio_file = episode_data['audioFile']
+					ino = audio_file.get('ino')
+					
+					if ino:
+						# Use direct file streaming endpoint for episode
+						direct_url = f"{self.base_url}/api/items/{iid}/file/{ino}?token={self.token}"
+						xbmc.log(f"Using direct episode file URL: {direct_url}", xbmc.LOGINFO)
+						return direct_url
+			
+			# For regular audiobooks - check if we can get direct file access
 			if 'media' in item and 'audioFiles' in item['media']:
 				audio_files = item['media']['audioFiles']
 				if audio_files and len(audio_files) > 0:
@@ -124,6 +147,7 @@ class AudioBookShelfLibraryService:
 			xbmc.log("Falling back to play session API", xbmc.LOGINFO)
 			response = self.play_library_item_by_id(
 				iid,
+				episode_id=episode_id,
 				force_direct_play=True,  # Request direct play, not transcoding
 				supported_mime_types=["audio/flac", "audio/mpeg", "audio/mp4", "audio/m4b"]
 			)
