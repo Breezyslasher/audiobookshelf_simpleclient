@@ -103,15 +103,36 @@ class AudioBookShelfLibraryService:
 	def get_file_url(self, iid):
 		"""Get the streaming URL for an audiobook file"""
 		try:
+			# First try to get the item details to find direct file access
+			item = self.get_library_item_by_id(iid)
+			
+			# Check if we can get direct file access
+			if 'media' in item and 'audioFiles' in item['media']:
+				audio_files = item['media']['audioFiles']
+				if audio_files and len(audio_files) > 0:
+					# Get the first audio file's ino
+					audio_file = audio_files[0]
+					ino = audio_file.get('ino')
+					
+					if ino:
+						# Use direct file streaming endpoint
+						direct_url = f"{self.base_url}/api/items/{iid}/file/{ino}?token={self.token}"
+						xbmc.log(f"Using direct file URL: {direct_url}", xbmc.LOGINFO)
+						return direct_url
+			
+			# Fallback to play session API (HLS)
+			xbmc.log("Falling back to play session API", xbmc.LOGINFO)
 			response = self.play_library_item_by_id(
-				iid, 
-				supported_mime_types=["audio/flac", "audio/mpeg", "audio/mp4"]
+				iid,
+				force_direct_play=True,  # Request direct play, not transcoding
+				supported_mime_types=["audio/flac", "audio/mpeg", "audio/mp4", "audio/m4b"]
 			)
 
 			full_content_url = None
 			if "audioTracks" in response and len(response["audioTracks"]) > 0:
 				relative_content_url = response["audioTracks"][0]["contentUrl"]
 				full_content_url = f"{self.base_url}{relative_content_url}?token={self.token}"
+				xbmc.log(f"Using audioTrack URL: {full_content_url}", xbmc.LOGINFO)
 
 			if not full_content_url:
 				raise Exception("Content URL not found or empty.")
