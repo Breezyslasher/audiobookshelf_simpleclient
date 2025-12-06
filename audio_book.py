@@ -6,6 +6,7 @@ import requests
 import json
 import threading
 from library_service import AudioBookShelfLibraryService
+from playback_monitor import PlaybackMonitor, get_resume_position, ask_resume
 
 
 class AudioBookPlayer(xbmcgui.WindowXMLDialog):
@@ -22,6 +23,7 @@ class AudioBookPlayer(xbmcgui.WindowXMLDialog):
 		self.publisher = kwargs['publisher']
 		self.duration = kwargs['duration']
 		self.player = xbmc.Player()
+		self.playback_monitor = None
 		
 		# Get library service - needs to be initialized from outside
 		addon = xbmcaddon.Addon()
@@ -208,7 +210,31 @@ class AudioBookPlayer(xbmcgui.WindowXMLDialog):
 					if self.player.isPlayingAudio():
 						self.player.pause()
 					else:
+						# Get resume position from server
+						resume_pos = get_resume_position(self.library_service, self.id)
+						
+						# Ask user if they want to resume
+						start_position = 0
+						if resume_pos > 0 and ask_resume(resume_pos, self.duration):
+							start_position = resume_pos
+						
+						# Start playing
 						self.player.play(afile)
+						
+						# Wait for player to be ready
+						timeout = 0
+						while not self.player.isPlaying() and timeout < 10:
+							xbmc.sleep(500)
+							timeout += 1
+						
+						# Start playback monitoring
+						if self.library_service:
+							self.playback_monitor = PlaybackMonitor(
+								self.library_service,
+								self.id,
+								self.duration
+							)
+							self.playback_monitor.start_monitoring(start_position)
 					
 					# Wait for pause button to be visible
 					timeout = 0
@@ -267,6 +293,11 @@ class AudioBookPlayer(xbmcgui.WindowXMLDialog):
 
 	def close(self):
 		"""Clean up and close the dialog"""
+		# Stop playback monitoring
+		if self.playback_monitor:
+			self.playback_monitor.stop_monitoring()
+			self.playback_monitor = None
+		
 		if self.player.isPlayingAudio():
 			self.player.stop()
 
