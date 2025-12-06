@@ -7,6 +7,7 @@ import xbmcvfs
 from login_service import AudioBookShelfService
 from library_service import AudioBookShelfLibraryService
 from audio_book import AudioBookPlayer
+from playback_monitor import PlaybackMonitor, get_resume_position, ask_resume
 try:
 	from urllib.request import urlretrieve
 	from urllib.parse import quote
@@ -406,7 +407,7 @@ class GUI(xbmcgui.WindowXML):
 			xbmcgui.Dialog().ok('Error', f'Failed to load audio files: {str(e)}')
 	
 	def play_audiobook_file(self, audiobook, audio_file):
-		"""Play a specific audio file from an audiobook"""
+		"""Play a specific audio file from an audiobook with resume support"""
 		try:
 			# Get settings for API call
 			ip_address = ADDON.getSetting('ipaddress')
@@ -428,6 +429,15 @@ class GUI(xbmcgui.WindowXML):
 				raise ValueError("Audio file has no ino")
 			
 			play_url = f"{url}/api/items/{audiobook['id']}/file/{ino}?token={token}"
+			duration = audio_file.get('duration', 0)
+			
+			# Get resume position (note: multi-file resume might not work perfectly server-side)
+			resume_pos = get_resume_position(library_service, audiobook['id'])
+			
+			# Ask user if they want to resume
+			start_position = 0
+			if resume_pos > 0 and ask_resume(resume_pos, duration):
+				start_position = resume_pos
 			
 			xbmc.log(f"Playing file URL: {play_url}", xbmc.LOGINFO)
 			
@@ -441,10 +451,27 @@ class GUI(xbmcgui.WindowXML):
 				'title': file_title,
 				'artist': audiobook.get('narrator_name', '').replace('Narrator: ', ''),
 				'album': audiobook.get('title', 'Unknown Audiobook'),
-				'duration': audio_file.get('duration', 0)
+				'duration': duration
 			})
 			
 			player.play(play_url, list_item)
+			
+			# Wait for player to start
+			timeout = 0
+			while not player.isPlaying() and timeout < 10:
+				xbmc.sleep(500)
+				timeout += 1
+			
+			# Start playback monitoring
+			monitor = PlaybackMonitor(library_service, audiobook['id'], duration)
+			monitor.start_monitoring(start_position)
+			
+			# Wait for playback to finish
+			while player.isPlayingAudio():
+				xbmc.sleep(1000)
+			
+			# Stop monitoring
+			monitor.stop_monitoring()
 			
 		except Exception as e:
 			xbmc.log(f"Error playing audio file: {str(e)}", xbmc.LOGERROR)
@@ -531,7 +558,7 @@ class GUI(xbmcgui.WindowXML):
 			xbmcgui.Dialog().ok('Error', f'Failed to load episodes: {str(e)}')
 	
 	def play_podcast_episode(self, podcast, episode):
-		"""Play a podcast episode"""
+		"""Play a podcast episode with resume support"""
 		try:
 			# Get settings for API call
 			ip_address = ADDON.getSetting('ipaddress')
@@ -549,7 +576,16 @@ class GUI(xbmcgui.WindowXML):
 			
 			# Get play URL for the episode
 			episode_id = episode.get('id')
+			duration = episode.get('duration', 0)
 			play_url = library_service.get_file_url(podcast['id'], episode_id=episode_id)
+			
+			# Get resume position
+			resume_pos = get_resume_position(library_service, podcast['id'], episode_id)
+			
+			# Ask user if they want to resume
+			start_position = 0
+			if resume_pos > 0 and ask_resume(resume_pos, duration):
+				start_position = resume_pos
 			
 			xbmc.log(f"Playing episode URL: {play_url}", xbmc.LOGINFO)
 			
@@ -559,10 +595,27 @@ class GUI(xbmcgui.WindowXML):
 			list_item.setInfo('music', {
 				'title': episode.get('title', 'Unknown Episode'),
 				'artist': podcast.get('title', 'Unknown Podcast'),
-				'duration': episode.get('duration', 0)
+				'duration': duration
 			})
 			
 			player.play(play_url, list_item)
+			
+			# Wait for player to start
+			timeout = 0
+			while not player.isPlaying() and timeout < 10:
+				xbmc.sleep(500)
+				timeout += 1
+			
+			# Start playback monitoring
+			monitor = PlaybackMonitor(library_service, podcast['id'], duration, episode_id=episode_id)
+			monitor.start_monitoring(start_position)
+			
+			# Wait for playback to finish
+			while player.isPlayingAudio():
+				xbmc.sleep(1000)
+			
+			# Stop monitoring
+			monitor.stop_monitoring()
 			
 		except Exception as e:
 			xbmc.log(f"Error playing episode: {str(e)}", xbmc.LOGERROR)
