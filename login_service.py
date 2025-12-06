@@ -1,69 +1,53 @@
-from typing import List, Optional
+import requests
 
+class AudioBookShelfService:
+	def __init__(self, base_url):
+		self.base_url = base_url
 
-class Metadata:
-    def __init__(self, title: str, title_ignore_prefix: Optional[str] = None,
-                 subtitle: Optional[str] = None, author_name: str = '',
-                 author_name_lf: Optional[str] = None, narrator_name: Optional[str] = None,
-                 series_name: Optional[str] = None, genres: Optional[List[str]] = None,
-                 published_year: Optional[int] = None, published_date: Optional[str] = None,
-                 publisher: Optional[str] = None, description: Optional[str] = None,
-                 isbn: Optional[str] = None, asin: Optional[str] = None,
-                 language: Optional[str] = None, explicit: bool = False,
-                 abridged: bool = False) -> None:
-        self.title = title
-        self.title_ignore_prefix = title_ignore_prefix
-        self.subtitle = subtitle
-        self.author_name = author_name
-        self.author_name_lf = author_name_lf
-        self.narrator_name = narrator_name
-        self.series_name = series_name
-        self.genres = genres or []
-        self.published_year = published_year
-        self.published_date = published_date
-        self.publisher = publisher
-        self.description = description
-        self.isbn = isbn
-        self.asin = asin
-        self.language = language
-        self.explicit = explicit
-        self.abridged = abridged
+	def login(self, username, password):
+		url = f"{self.base_url}/login"
+		payload = {
+			"username": username,
+			"password": password
+		}
+		return self._post(url, payload).get("user")
 
+	def logout(self, socketId=None):
+		url = f"{self.base_url}/logout"
+		payload = {}
+		if socketId:
+			payload["socketId"] = socketId
+		self._post(url, payload)
 
-class Media:
-    def __init__(self, media_dict):
-        self.id = media_dict.get('id')
-        self.metadata = media_dict.get('metadata')
-        self.cover_path = media_dict.get('coverPath')
-        self.tags = media_dict.get('tags')
-        self.num_tracks = media_dict.get('numTracks')
-        self.num_audio_files = media_dict.get('numAudioFiles')
-        self.num_chapters = media_dict.get('numChapters')
-        self.num_missing_parts = media_dict.get('numMissingParts')
-        self.num_invalid_audio_files = media_dict.get('numInvalidAudioFiles')
-        self.duration = media_dict.get('duration')
-        self.size = media_dict.get('size')
-        self.ebook_format = media_dict.get('ebookFormat')
+	def initialize_server(self, new_root_username, new_root_password=""):
+		url = f"{self.base_url}/init"
+		payload = {
+			"newRoot": {
+				"username": new_root_username,
+				"password": new_root_password
+			}
+		}
+		self._post(url, payload)
 
+	def server_status(self):
+		url = f"{self.base_url}/status"
+		return self._get(url)        
 
-class Audiobook:
-    def __init__(self, data):
-        self.id = data.get('id')
-        self.ino = data.get('ino')
-        self.old_library_item_id = data.get('oldLibraryItemId')
-        self.library_id = data.get('libraryId')
-        self.folder_id = data.get('folderId')
-        self.path = data.get('path')
-        self.rel_path = data.get('relPath')
-        self.is_file = data.get('isFile')
-        self.mtime_ms = data.get('mtimeMs')
-        self.ctime_ms = data.get('ctimeMs')
-        self.birthtime_ms = data.get('birthtimeMs')
-        self.added_at = data.get('addedAt')
-        self.updated_at = data.get('updatedAt')
-        self.is_missing = data.get('isMissing')
-        self.is_invalid = data.get('isInvalid')
-        self.media_type = data.get('mediaType')
-        self.media = Media(data.get('media', {}))
-        self.num_files = data.get('numFiles')
-        self.size = data.get('size')
+	def ping(self):
+		url = f"{self.base_url}/ping"
+		return self._get(url)
+
+	def healthcheck(self):
+		url = f"{self.base_url}/healthcheck"
+		self._get(url)
+
+	def _post(self, url, payload=None):
+		headers = {"Content-Type": "application/json"}
+		response = requests.post(url, headers=headers, json=payload)
+		response.raise_for_status()
+		return response.json()
+
+	def _get(self, url):
+		response = requests.get(url)
+		response.raise_for_status()
+		return response.json()
