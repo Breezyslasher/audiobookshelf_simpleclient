@@ -1,9 +1,9 @@
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <settings>
-    <category label="General">
+    <category label="Server Settings">
         <setting id="ipaddress" type="text" label="IP Address" default="" />
-        <setting id="port" type="number" label="Port" default="80" />
+        <setting id="port" type="text" label="Port" default="13378" />
         <setting id="username" type="text" label="Username" default="" />
-        <setting id="password" type="text" option="hidden" label="Password" default="" />
+        <setting id="password" type="text" label="Password" default="" option="hidden" />
     </category>
 </settings>
