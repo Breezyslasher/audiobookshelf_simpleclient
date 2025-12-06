@@ -172,32 +172,105 @@ class AudioBookShelfLibraryService:
 		if episode_id:
 			endpoint += f"/{episode_id}"
 
-		response = requests.get(self.base_url + endpoint, headers=self.headers)
-		response.raise_for_status()
-
 		try:
+			response = requests.get(self.base_url + endpoint, headers=self.headers)
+			
+			# 404 means no progress saved yet (not an error)
+			if response.status_code == 404:
+				xbmc.log(f"No progress found for item (new item)", xbmc.LOGINFO)
+				return None
+			
+			response.raise_for_status()
 			return response.json()
 		except json.JSONDecodeError:
 			xbmc.log("Failed to decode JSON response for media progress", xbmc.LOGERROR)
 			xbmc.log(response.text, xbmc.LOGDEBUG)
-			return {'message': 'Failed to decode JSON'}
+			return None
+		except Exception as e:
+			xbmc.log(f"Error getting media progress: {str(e)}", xbmc.LOGDEBUG)
+			return None
 
-	def update_media_progress(self, library_item_id, data, episode_id=None):
+	def update_media_progress(self, library_item_id, current_time, duration, is_finished=False, episode_id=None):
 		"""Update playback progress on the server"""
 		endpoint = f"/api/me/progress/{library_item_id}"
 		if episode_id:
 			endpoint += f"/{episode_id}"
 
+		data = {
+			"currentTime": current_time,
+			"duration": duration,
+			"isFinished": is_finished,
+			"progress": (current_time / duration) if duration > 0 else 0
+		}
+		
 		try:
 			response = requests.patch(self.base_url + endpoint, headers=self.headers, json=data)
 			response.raise_for_status()
+			xbmc.log(f"Progress updated: {current_time:.1f}s / {duration:.1f}s ({data['progress']*100:.1f}%)", xbmc.LOGINFO)
 			return response.json()
 		except json.JSONDecodeError:
 			xbmc.log("Invalid or empty JSON response received", xbmc.LOGERROR)
-			return {'message': 'Failed to decode JSON'}
+			return None
 		except Exception as e:
 			xbmc.log(f"Error updating media progress: {str(e)}", xbmc.LOGERROR)
-			return {'message': 'Failed to update progress'}
+			return None
+	
+	def start_playback_session(self, library_item_id, episode_id=None):
+		"""Start a playback session on the server"""
+		endpoint = f"/api/session/local"
+		
+		data = {
+			"libraryItemId": library_item_id,
+			"mediaPlayer": "Kodi",
+			"deviceInfo": {
+				"deviceId": "kodi-audiobookshelf-client",
+				"clientName": "Kodi Audiobookshelf Client"
+			}
+		}
+		
+		if episode_id:
+			data["episodeId"] = episode_id
+		
+		try:
+			response = requests.post(self.base_url + endpoint, headers=self.headers, json=data)
+			response.raise_for_status()
+			session = response.json()
+			xbmc.log(f"Started playback session: {session.get('id')}", xbmc.LOGINFO)
+			return session
+		except Exception as e:
+			xbmc.log(f"Error starting playback session: {str(e)}", xbmc.LOGERROR)
+			return None
+	
+	def sync_playback_session(self, session_id, current_time, duration, time_listened=0):
+		"""Sync playback session with server"""
+		endpoint = f"/api/session/local/{session_id}/sync"
+		
+		data = {
+			"currentTime": current_time,
+			"duration": duration,
+			"timeListened": time_listened
+		}
+		
+		try:
+			response = requests.post(self.base_url + endpoint, headers=self.headers, json=data)
+			response.raise_for_status()
+			return response.json()
+		except Exception as e:
+			xbmc.log(f"Error syncing playback session: {str(e)}", xbmc.LOGDEBUG)
+			return None
+	
+	def close_playback_session(self, session_id):
+		"""Close a playback session on the server"""
+		endpoint = f"/api/session/local/{session_id}/close"
+		
+		try:
+			response = requests.post(self.base_url + endpoint, headers=self.headers)
+			response.raise_for_status()
+			xbmc.log(f"Closed playback session: {session_id}", xbmc.LOGINFO)
+			return True
+		except Exception as e:
+			xbmc.log(f"Error closing playback session: {str(e)}", xbmc.LOGERROR)
+			return False
 
 	def get_chapters(self, library_item_id):
 		"""Get chapter information for a library item"""
