@@ -37,7 +37,7 @@ Audiobook listening time may not sync correctly.
 ## Updates and Future Plans
 
 1. Offline Download 
-2. Podcats Management 
+2. Podcast Management 
 3. View filter options for showing all items or hiding watched/downloaded content
 
 ## Acknowledgements
